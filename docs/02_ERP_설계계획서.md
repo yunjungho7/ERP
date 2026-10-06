@@ -32,6 +32,8 @@
 
 **대안**: PFMES 스택(FastAPI + Vue3 + MSSQL)으로 가면 MES 코드·데이터 재사용에 유리하지만, 그룹웨어 통합·멀티테넌트·오픈소스 DB 측면에서 상기 스택을 추천. → 결정 필요(§10-1)
 
+> 버전 표기는 계획서 작성 시점 기준이며, M0 착수 시점에 각 영역의 최신 LTS(또는 안정 메이저)로 갱신한다.
+
 ## 3. 아키텍처
 
 ### 3.1 모듈러 모놀리스
@@ -69,6 +71,7 @@ flowchart LR
 ### 3.2 멀티테넌시
 
 - 모든 업무 테이블에 `tenant_id`, PostgreSQL RLS 정책(`tenant_id = current_setting('app.tenant')`), API 미들웨어에서 설정. 테넌트 간 데이터 조회는 조인 불가.
+- **Prisma 구현 패턴**: Prisma는 RLS를 네이티브로 지원하지 않으므로, 요청 트랜잭션 시작 시점에 `SET LOCAL app.tenant = '<tenant_id>'`를 주입하는 Prisma 미들웨어 + `$transaction` 패턴을 사용한다. `SET LOCAL`은 트랜잭션 스코프에서만 유효하므로 미들웨어 단독 설정이 아니라 트랜잭션 시작 시점에 주입해야 한다. PgBouncer 사용 시 transaction 모드 전제. 마이그레이션·배치용 bypass role은 별도 정의.
 - 대형 고객/온프레미스는 같은 이미지의 전용 DB — 스키마는 하나만 유지(마이그레이션 일원화).
 
 ## 4. 핵심 설계 원칙
@@ -106,7 +109,7 @@ flowchart LR
 | 모듈 | 주요 화면/기능 | 우선순위 |
 |---|---|---|
 | 공통 기준정보 | 회사/사업장/부서/사원, 거래처(여신한도), 품목/BOM, 창고, 계정과목, 은행계좌, 환율, 코드 관리 | P0 |
-| 영업/판매 | 견적 → 수주 → 출고지시 → 출고 → 매출(세금계산서) → 수금, 거래명세서 | P0 |
+| 영업/판매 | 견적 → 수주 → 출고지시 → 출고 → 매출(세금계산서) → 거래명세서 (수금·미수 관리는 자금 모듈) | P0 |
 | 구매 | 구매요청 → 발주 → 입고 → 매입 → 지급 | P0 |
 | 재고 | 입출고, 창고이동, 재고조정, 실사, 수불부/재고현황, 안전재고 | P0 |
 | 회계 | 자동분개, 전표입력, 총계정원장/계정별원장/보조부, 시산표, 재무제표(재무상태표·손익계산서), 부가세 신고 자료, 기간마감 | P0 |
@@ -116,15 +119,15 @@ flowchart LR
 | 원가 | 실적 원가 집계, 품목별 원가 | P2 |
 | 인사/급여 | 근태(그룹웨어 연동), 급여계산, 원천세, 연말정산, 4대보험 | P2 (요율 연도별 데이터화) |
 | 고정자산 | 취득/감가상각/처분, 감가상각 자동분개 | P2 |
-| 대시보드/리포트 | 경영 지표, 커스텀 리포트 | P2 |
+| 대시보드/리포트 | 경영 지표, 커스텀 리포트 | P1(기본 KPI 대시보드) ~ P2(분석·사용자 정의) |
 | 확장 | 커스텀 필드, 인쇄양식, 승인규칙, 웹훅, Open API | P1부터 점진 |
 
 ## 6. 주요 데이터 모델 (스케치)
 
 ```
 tenant ── company ── business_site ── department ── employee
-customer(vendor 겸용), item, bom, warehouse
-sales_order + sales_order_line ── shipment ── sales_invoice(세금계산서) ── receipt
+partner(고객/공급처 겸용), item, bom, warehouse
+sales_order + sales_order_line ── shipment ── sales_invoice ── tax_invoice(세금계산서) ── receipt
 purchase_order + line ── goods_receipt ── purchase_invoice ── payment
 stock_ledger(append-only), stock_balance
 account(계정과목) ── journal_entry + journal_entry_line (차/대: account, partner, cost_center, memo, amount, currency, exchange_rate)
