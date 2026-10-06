@@ -128,6 +128,12 @@ flowchart LR
 tenant ── company ── business_site ── department ── employee
 partner(고객/공급처 겸용), item, bom, warehouse
 sales_order + sales_order_line ── shipment ── sales_invoice ── tax_invoice(세금계산서) ── receipt
+purchase_order + line ── goods_receipt ── purchase_invoice ── payment
+stock_ledger(append-only), stock_balance
+account(계정과목) ── journal_entry + journal_entry_line (차/대: account, partner, cost_center, memo, amount, currency, exchange_rate)
+posting_rule(이벤트유형 → 차/대 계정 매핑, 테넌트별 설정)
+doc_sequence, audit_log, custom_field_def, print_template
+```
 
 - `journal_entry`는 `source_type`/`source_id`(예: `sales_invoice:123`)로 원본 문서 역추적 — 원장에서 업무 화면으로 드릴다운.
 
